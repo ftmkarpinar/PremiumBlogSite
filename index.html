@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Fatma Karpınar — Software Developer. .NET, React.js ve Node.js ile kurumsal yazılım çözümleri üreten Bilgisayar Mühendisi."
+    />
+    <meta name="author" content="Fatma Karpınar" />
+    <title>Fatma Karpınar — Software Developer</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+
+    <!-- Spline 3D Viewer -->
+    <script
+      type="module"
+      src="https://unpkg.com/@splinetool/viewer@1.9.82/build/spline-viewer.js"
+    ></script>
+  </head>
+  <body>
+    <!-- SHADER BACKGROUND -->
+    <canvas id="shaderBg" aria-hidden="true"></canvas>
+    <script type="x-shader/x-fragment">
+      #version 300 es
+      precision highp float;
+      out vec4 O;
+      uniform float time;
+      uniform vec2 resolution;
+      uniform vec2 move;
+      uniform vec2 wheel;
+      #define FC gl_FragCoord.xy
+      #define R resolution
+      #define T (time+113.+.2*wheel.y/MN)
+      #define S smoothstep
+      #define N normalize
+      #define MN min(R.x,R.y)
+      #define hue(a) (.5+.5*sin(3.14*(a)+vec3(1,2,3)))
+      #define LP vec3(1.+1.*sin(-T),2.-2.*cos(T),-3.-4.*sin(sin(T)))
+      vec3 render(vec2 uv);
+      void main() { O=vec4(render((FC-.5*R)/MN),1); }
+      float smin(float a, float b, float k) { k*=log(2.); float x=b-a; return a+x/(1.-exp2(x/k)); }
+      float box(vec3 p, vec3 s, float r) { p=abs(p)-s+r; return length(max(p,.0))+min(.0,max(max(p.x,p.y),p.z))-r; }
+      float glow;
+      float map(vec3 p, bool g) {
+        float d=5e5;
+        if (g) { d=length(p-LP+vec3(.2,.2,0))-.02; glow+=.05/(.05+d*d*80.); }
+        p.z-=T*3.5; p=fract(p)-.5;
+        vec4 k=vec4(1,.05,.03,.1); float r=1e-2;
+        return min(d,smin(box(p,k.www,r),min(box(p,k.zxz,r),min(box(p,k.xyz,r),box(p,k.yzx,r))),.01));
+      }
+      vec3 norm(vec3 p) { float h=1e-3; vec2 k=vec2(-1,1); return N(k.xyy*map(p+k.xyy*h,false)+k.yxy*map(p+k.yxy*h,false)+k.yyx*map(p+k.yyx*h,false)+k.xxx*map(p+k.xxx*h,false)); }
+      bool march(inout vec3 p, vec3 rd, out float dd, out float at) { for(float i;i++<400.;){float d=map(p,true);if(abs(d)<1e-3)return true;if(d>100.)return false;p+=rd*d;dd+=d;at+=.05*(.05/dd);} }
+      vec3 dir(vec2 uv, vec3 p, vec3 t, float z) { vec3 up=vec3(0,1,0),f=N(t-p),r=N(cross(up,f)),u=N(cross(f,r)); return mat3(r,u,f)*N(vec3(uv,z)); }
+      mat3 rotX(float a){float s=sin(a),c=cos(a);return mat3(vec3(1,0,0),vec3(0,c,-s),vec3(0,s,c));}
+      mat3 rotY(float a){float s=sin(a),c=cos(a);return mat3(vec3(c,0,s),vec3(0,1,0),vec3(-s,0,c));}
+      float rnd(float a){vec2 p=fract(a*vec2(12.9898,78.233));p+=dot(p,p+34.56);return fract(p.x*p.y);}
+      float curve(float t, float e){t/=e;return mix(rnd(floor(t)),rnd(floor(t)+1.),pow(S(.0,1.,fract(t)),10.));}
+      vec3 org(){float k=-.2*sin(sin(T)),drama=3.14*curve(T*.2,2.);vec2 m=move/R;vec3 ro=vec3(0,0,.1);ro*=rotX(m.y*6.3-k-.1+drama/12.)*rotY(m.x*6.3-.45-sin(cos(T*.2-k+drama)));return ro;}
+      float shadow(vec3 p, vec3 lp){float shd=1.,maxd=length(lp-p);vec3 l=N(lp-p);for(float i=1e-3;i<maxd;){float d=map(p+l*i,false);if(d<1e-3){shd=.0;break;}shd=min(shd,64.*d/i);i+=d;}return shd;}
+      float calcAO(vec3 p, vec3 n){float occ=.0,sca=1.;for(float i=.0;i<5.;i++){float h=.01+i*.09,d=map(p+h*n,false);occ+=(h-d)*sca;sca*=.55;if(occ>.35)break;}return clamp(1.-3.*occ,.0,1.)*(.5+.5*n.y);}
+      vec3 render(vec2 uv){
+        vec3 col=vec3(0),p=org(),ro=p,rd=dir(uv,p,vec3(0),1.);
+        float dd,at;
+        if(march(p,rd,dd,at)){vec3 n=norm(p),lp=LP,l=N(lp-p),e=N(ro-p),r=reflect(-l,n);float ld=distance(lp,p),atten=1./(1.+ld*.25+ld*ld*.125),ao=calcAO(p,n),shd=shadow(p+n*5e-2,lp);col+=shd*atten*vec3(.1,.095,.09)+clamp(dot(l,n),.0,1.)*atten*ao*shd;col+=pow(max(.0,dot(r,e)),8.)*atten*ao*shd;col+=clamp(dot(-rd,l),.0,1.)*ao*atten*1.2;}
+        float k=mix(max(.2,1.-distance(LP,ro)),.25,fract(sin(dot(ro,vec3(12.9898,78.233,156.345)))*345678.)),f=S(1.,.0,clamp(dd/200.,.0,1.));
+        vec3 tint=vec3(1.2,.95,.9);
+        col+=tint*at*k;col+=hue(3.14*k+f*f*f)*k*k;
+        col=mix(col,vec3(1,.95,.9),S(.0,50.,distance(p,ro)));
+        col=tanh(col*col);col=sqrt(col);
+        col=mix(sqrt(col)*1.2,col,clamp(S(-.1,.2,dot(uv,uv)),.0,1.));
+        col+=tanh(tint*glow);
+        vec2 c=FC/R;c*=1.-c.yx;float vig=c.x*c.y*25.;vig=pow(vig,.25);col*=vig;
+        return col;
+      }
+    </script>
+
+    <!-- NAVBAR -->
+    <nav class="navbar" id="navbar">
+      <div class="nav-inner">
+        <a href="#hero" class="nav-logo">fatma.dev</a>
+        <div class="nav-links" id="navLinks">
+          <a href="#about" class="nav-link" data-section="about">Hakkımda</a>
+          <a href="#experience" class="nav-link" data-section="experience"
+            >Deneyim</a
+          >
+          <a href="#projects" class="nav-link" data-section="projects"
+            >Projeler</a
+          >
+          <a href="#contact" class="nav-link" data-section="contact"
+            >İletişim</a
+          >
+        </div>
+        <button class="nav-toggle" id="navToggle" aria-label="Menü">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </nav>
+    <div class="nav-overlay" id="navOverlay"></div>
+
+    <!-- HERO -->
+    <section class="hero section" id="hero">
+      <div class="container">
+        <div class="hero-grid sr">
+          <div class="hero-photo">
+            <img
+              src="assets/images/about-photo.jpg"
+              alt="Fatma Karpınar — Software Developer"
+            />
+          </div>
+
+          <div class="hero-copy">
+            <span class="hero-label">Software Developer</span>
+            <h1>Fatma Karpınar</h1>
+            <p class="hero-title">Bilgisayar Mühendisi · İstanbul</p>
+
+            <div class="hero-divider"></div>
+
+            <p class="hero-desc">
+              Kod yazmak benim için sadece bir meslek değil — karmaşık
+              problemleri zarif çözümlere dönüştürme sanatı.
+              <strong>.NET, React.js ve Node.js</strong> ekosisteminde
+              derinleşmiş, kurumsal ölçekte çalışan uygulamalar tasarlıyorum.
+            </p>
+
+            <div class="hero-actions">
+              <a href="#projects" class="hero-btn hero-btn--primary">
+                Projelerime Bak <i class="fa-solid fa-arrow-right"></i>
+              </a>
+              <a
+                href="assets/FatmaKarpinar-CV.pdf"
+                download
+                class="hero-btn hero-btn--cv"
+              >
+                CV İndir <i class="fa-solid fa-download"></i>
+              </a>
+              <a href="#contact" class="hero-btn">
+                İletişim <i class="fa-solid fa-arrow-right"></i>
+              </a>
+            </div>
+
+            <div class="hero-socials">
+              <a
+                href="https://linkedin.com/in/fatmakarpinar"
+                target="_blank"
+                rel="noopener"
+                class="hero-social"
+                aria-label="LinkedIn"
+              >
+                <i class="fa-brands fa-linkedin-in"></i>
+              </a>
+              <a
+                href="https://github.com/ftmkarpinar"
+                target="_blank"
+                rel="noopener"
+                class="hero-social"
+                aria-label="GitHub"
+              >
+                <i class="fa-brands fa-github"></i>
+              </a>
+              <a
+                href="https://www.instagram.com/thetechfatma/"
+                target="_blank"
+                rel="noopener"
+                class="hero-social"
+                aria-label="Instagram"
+              >
+                <i class="fa-brands fa-instagram"></i>
+              </a>
+              <a
+                href="mailto:fatma.softeng@gmail.com"
+                class="hero-social"
+                aria-label="Email"
+              >
+                <i class="fa-solid fa-envelope"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ABOUT -->
+    <section class="section" id="about">
+      <div class="container">
+        <div class="sh sr">
+          <span class="sh-num">01</span>
+          <span class="sh-line"></span>
+          <span class="sh-title">Hakkımda</span>
+        </div>
+
+        <div class="about-grid">
+          <div class="about-photo-wrap sr">
+            <img src="assets/images/hero-photo.jpg" alt="Fatma Karpınar" />
+            <div class="about-photo-badge">
+              <i class="fa-solid fa-code"></i>
+              <span>Full Stack Dev</span>
+            </div>
+          </div>
+
+          <div class="about-col sr">
+            <h3>Merhaba, ben <span>Fatma</span></h3>
+            <p>
+              İstanbul'da yaşayan, kod yazmaktan gerçekten keyif alan bir
+              yazılım geliştiriciyim. Bilgisayar Mühendisliği diplomamı
+              tamamladıktan sonra kendi alanımda derinleşmek için 480 saatlik
+              yoğun bir Full Stack .NET programına katıldım — ve bu süreç beni
+              şekillendirdi.
+            </p>
+            <p>
+              Türk Hava Yolları ve FHT Yazılım'daki deneyimlerim sayesinde hem
+              kurumsal ERP dünyasını hem de modern web geliştirmeyi yakından
+              tanıdım. Şu an asıl ilgi alanım: kullanıcının gözünde sorunsuz
+              çalışan ama arka planda sağlam mühendislik barındıran uygulamalar
+              inşa etmek.
+            </p>
+            <p>
+              Kod dışında bir fincan kahveyle yeni bir şeyler öğrenmek, teknik
+              içerik üretmek ve yazılım dünyasındaki gelişmeleri takip etmek
+              benim için vazgeçilmez.
+            </p>
+          </div>
+        </div>
+
+        <!-- Details below, full width -->
+        <dl class="about-details sr">
+          <div class="about-detail">
+            <dt>Konum</dt>
+            <dd>İstanbul, Türkiye</dd>
+          </div>
+          <div class="about-detail">
+            <dt>Uzmanlık</dt>
+            <dd>.NET · React · Node.js</dd>
+          </div>
+          <div class="about-detail">
+            <dt>Eğitim</dt>
+            <dd>Bilgisayar Mühendisliği</dd>
+          </div>
+          <div class="about-detail">
+            <dt>Dil</dt>
+            <dd>Türkçe · İngilizce (B1)</dd>
+          </div>
+          <div class="about-detail">
+            <dt>Durum</dt>
+            <dd class="status-open">
+              <span class="status-dot"></span> Fırsatlara Açık
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- SPLINE 3D INTERACTIVE SECTION -->
+    <section class="spline-section sr" id="interactive">
+      <div class="container">
+        <div class="spline-card">
+          <!-- Spotlight overlay -->
+          <div class="spotlight-overlay" id="spotlightOverlay"></div>
+
+          <div class="spline-inner">
+            <!-- Left: text -->
+            <div class="spline-text">
+              <span class="spline-badge">Interactive · 3D</span>
+              <h2 class="spline-title">Teknoloji<br />ile dans et.</h2>
+              <p class="spline-desc">
+                Sadece arayüz yazmıyorum — deneyim tasarlıyorum. Her projede
+                kullanıcıyı merkeze alan, performansı ön planda tutan çözümler
+                üretiyorum.
+              </p>
+              <div class="spline-stats">
+                <div class="spline-stat">
+                  <span class="spline-stat-num">3+</span>
+                  <span class="spline-stat-label">Yıl Deneyim</span>
+                </div>
+                <div class="spline-stat">
+                  <span class="spline-stat-num">480h</span>
+                  <span class="spline-stat-label">Yoğun Eğitim</span>
+                </div>
+                <div class="spline-stat">
+                  <span class="spline-stat-num">5+</span>
+                  <span class="spline-stat-label">Tamamlanan Proje</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Spline 3D -->
+            <div class="spline-viewer-wrap">
+              <spline-viewer
+                url="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
+                loading-anim-type="spinner-small-dark"
+              ></spline-viewer>
+              </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EXPERIENCE -->
+    <section class="section" id="experience">
+      <div class="container">
+        <div class="sh sr">
+          <span class="sh-num">02</span>
+          <span class="sh-line"></span>
+          <span class="sh-title">Deneyim</span>
+        </div>
+
+        <div class="exp-list">
+          <div class="exp-item sr">
+            <div class="exp-meta">
+              <span class="exp-date">Haz 2024 — May 2025</span>
+              <span class="exp-company"
+                ><i class="fa-solid fa-graduation-cap"></i> İstanbul Eğitim
+                Akademi</span
+              >
+            </div>
+            <div class="exp-body">
+              <h3>Full Stack .NET Developer Bootcamp — 480 Saat</h3>
+              <ul>
+                <li>
+                  .NET Core, C# ve MSSQL ile uçtan uca kurumsal uygulama
+                  geliştirme pratiği kazandım
+                </li>
+                <li>
+                  SOLID prensipleri ve Clean Architecture rehberliğinde çok
+                  katmanlı, sürdürülebilir yazılım mimarileri tasarladım
+                </li>
+                <li>
+                  Modern frontend araçlarını güçlü backend API'larıyla entegre
+                  eden tam kapsamlı full-stack projeler teslim ettim
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="exp-item sr">
+            <div class="exp-meta">
+              <span class="exp-date">Haz 2023 — Ağu 2023</span>
+              <span class="exp-company"
+                ><i class="fa-solid fa-code"></i> FHT Yazılım</span
+              >
+            </div>
+            <div class="exp-body">
+              <h3>Software Developer Intern</h3>
+              <ul>
+                <li>
+                  HTML5, CSS3 ve JavaScript kullanarak tarayıcı uyumlu,
+                  responsive web arayüzleri geliştirdim
+                </li>
+                <li>
+                  RESTful API entegrasyonları yaparak asenkron veri akışlarını
+                  yönettim ve optimize ettim
+                </li>
+                <li>
+                  Bootstrap ile piksel-mükemmel UI implementasyonu
+                  gerçekleştirerek platform genelinde görsel tutarlılık sağladım
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="exp-item sr">
+            <div class="exp-meta">
+              <span class="exp-date">Haz 2022 — Ağu 2022</span>
+              <span class="exp-company"
+                ><i class="fa-solid fa-plane"></i> Türk Hava Yolları</span
+              >
+            </div>
+            <div class="exp-body">
+              <h3>ERP Technology & Reporting Intern</h3>
+              <ul>
+                <li>
+                  SAP ERP sistemlerindeki karmaşık veri setlerini analiz ederek
+                  kaynak yönetimine yönelik içgörüler ürettim
+                </li>
+                <li>
+                  Raporlama süreçlerini optimize ederek rapor üretim hızını
+                  yaklaşık %15 artırdım
+                </li>
+                <li>
+                  Yeni veri modülü entegrasyonlarında veri bütünlüğünü güvence
+                  altına almak için kapsamlı test senaryoları yürüttüm
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROJECTS -->
+    <section class="section" id="projects">
+      <div class="container">
+        <div class="sh sr">
+          <span class="sh-num">03</span>
+          <span class="sh-line"></span>
+          <span class="sh-title">Projeler</span>
+        </div>
+
+        <div class="projects-list">
+          <div class="project-card sr">
+            <span class="project-num">01</span>
+            <div class="project-content">
+              <h3 class="project-title">SaaS QR Menü & Sipariş Sistemi</h3>
+              <p class="project-desc">
+                Restoranların fiziksel menü baskısına ihtiyaç duymadan
+                müşterilerine dijital sipariş deneyimi sunan, gerçek zamanlı
+                güncellemeli Single Page Application.
+              </p>
+              <ul class="project-bullets">
+                <li>
+                  React.js ile SPA mimarisi; QR kod tarama ile anında erişim
+                </li>
+                <li>
+                  Eşzamanlı siparişleri destekleyen normalize MySQL veritabanı
+                  şeması
+                </li>
+                <li>
+                  Mobile-first responsive tasarım ve gerçek zamanlı sipariş
+                  takibi
+                </li>
+              </ul>
+              <div class="project-tech">
+                <span class="tag">React.js</span>
+                <span class="tag">Node.js</span>
+                <span class="tag">MySQL</span>
+                <span class="tag">REST API</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="project-card sr">
+            <span class="project-num">02</span>
+            <div class="project-content">
+              <h3 class="project-title">Corporate Admin Dashboard</h3>
+              <p class="project-desc">
+                Dinamik CRUD işlemleri, rol tabanlı erişim kontrolü ve yüksek
+                performanslı sorgu yönetimi ile kurumsal veri yönetimini merkezi
+                hale getiren yönetici paneli.
+              </p>
+              <ul class="project-bullets">
+                <li>
+                  RBAC mimarisiyle hassas yetkilendirme ve güvenli veri erişim
+                  katmanı
+                </li>
+                <li>
+                  ADO.NET üzerinden ham SQL sorguları; büyük veri setlerinde
+                  düşük gecikme süresi
+                </li>
+                <li>Tam CRUD yönetimi ile kapsamlı içerik yönetim arayüzü</li>
+              </ul>
+              <div class="project-tech">
+                <span class="tag">ASP.NET</span>
+                <span class="tag">ADO.NET</span>
+                <span class="tag">SQL Server</span>
+                <span class="tag">C#</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="project-card sr">
+            <span class="project-num">03</span>
+            <div class="project-content">
+              <h3 class="project-title">Jewellery Management ERP/CRM</h3>
+              <p class="project-desc">
+                Kuyumculuk işletmeleri için müşteri ilişkileri, envanter takibi
+                ve finansal işlemleri tek çatı altında toplayan özel ERP/CRM
+                platformu.
+              </p>
+              <ul class="project-bullets">
+                <li>
+                  Rol tabanlı kimlik doğrulama, denetim günlüğü ve otomatik
+                  günlük yedekleme sistemi
+                </li>
+                <li>
+                  Alacak/borç takibi, vade uyarıları ve dijital fatura yazdırma
+                  modülü
+                </li>
+                <li>
+                  React.js ve Ant Design 5 ile dark-themed, tam responsive
+                  kullanıcı arayüzü
+                </li>
+              </ul>
+              <div class="project-tech">
+                <span class="tag">React.js</span>
+                <span class="tag">Node.js</span>
+                <span class="tag">Express.js</span>
+                <span class="tag">MongoDB</span>
+                <span class="tag">Ant Design</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SKILLS MARQUEE -->
+    <section class="marquee-section" id="skills">
+      <p class="marquee-label">Teknik Yetkinlikler</p>
+
+      <div class="marquee-row">
+        <div class="marquee-track">
+          <span class="marquee-item">C#</span>
+          <span class="marquee-item">JavaScript</span>
+          <span class="marquee-item">.NET Core</span>
+          <span class="marquee-item">ASP.NET</span>
+          <span class="marquee-item">React.js</span>
+          <span class="marquee-item">Entity Framework</span>
+          <span class="marquee-item">Redux</span>
+          <span class="marquee-item">Bootstrap</span>
+          <span class="marquee-item">jQuery</span>
+          <span class="marquee-item">Ant Design</span>
+          <span class="marquee-item">HTML5</span>
+          <span class="marquee-item">CSS3</span>
+        </div>
+        <div class="marquee-track" aria-hidden="true">
+          <span class="marquee-item">C#</span>
+          <span class="marquee-item">JavaScript</span>
+          <span class="marquee-item">.NET Core</span>
+          <span class="marquee-item">ASP.NET</span>
+          <span class="marquee-item">React.js</span>
+          <span class="marquee-item">Entity Framework</span>
+          <span class="marquee-item">Redux</span>
+          <span class="marquee-item">Bootstrap</span>
+          <span class="marquee-item">jQuery</span>
+          <span class="marquee-item">Ant Design</span>
+          <span class="marquee-item">HTML5</span>
+          <span class="marquee-item">CSS3</span>
+        </div>
+      </div>
+
+      <div class="marquee-row marquee-row--reverse">
+        <div class="marquee-track">
+          <span class="marquee-item">MS SQL Server</span>
+          <span class="marquee-item">MySQL</span>
+          <span class="marquee-item">MongoDB</span>
+          <span class="marquee-item">SQL</span>
+          <span class="marquee-item">T-SQL</span>
+          <span class="marquee-item">Git</span>
+          <span class="marquee-item">GitHub</span>
+          <span class="marquee-item">Visual Studio</span>
+          <span class="marquee-item">VS Code</span>
+          <span class="marquee-item">REST API</span>
+          <span class="marquee-item">Node.js</span>
+          <span class="marquee-item">Express.js</span>
+        </div>
+        <div class="marquee-track" aria-hidden="true">
+          <span class="marquee-item">MS SQL Server</span>
+          <span class="marquee-item">MySQL</span>
+          <span class="marquee-item">MongoDB</span>
+          <span class="marquee-item">SQL</span>
+          <span class="marquee-item">T-SQL</span>
+          <span class="marquee-item">Git</span>
+          <span class="marquee-item">GitHub</span>
+          <span class="marquee-item">Visual Studio</span>
+          <span class="marquee-item">VS Code</span>
+          <span class="marquee-item">REST API</span>
+          <span class="marquee-item">Node.js</span>
+          <span class="marquee-item">Express.js</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- EDUCATION -->
+    <section class="section" id="education">
+      <div class="container">
+        <div class="sh sr">
+          <span class="sh-num">04</span>
+          <span class="sh-line"></span>
+          <span class="sh-title">Eğitim</span>
+        </div>
+
+        <div class="edu-card sr">
+          <div class="edu-icon">
+            <i class="fa-solid fa-graduation-cap"></i>
+          </div>
+          <div class="edu-info">
+            <h3>Bilgisayar Mühendisliği</h3>
+            <p class="edu-school">Kırşehir Ahi Evran Üniversitesi</p>
+            <p class="edu-date">Eylül 2019 — Şubat 2024</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACT -->
+    <section class="section" id="contact">
+      <div class="container">
+        <div class="sh sr">
+          <span class="sh-num">05</span>
+          <span class="sh-line"></span>
+          <span class="sh-title">İletişim</span>
+        </div>
+
+        <div class="contact-grid">
+          <div class="contact-left sr">
+            <h3>Birlikte<br /><span>çalışalım.</span></h3>
+            <p>
+              Yeni projeler, iş fırsatları veya sadece teknik konularda sohbet
+              etmek için bana ulaşın. Her mesaj okunur.
+            </p>
+
+            <div class="contact-items">
+              <a href="mailto:fatma.softeng@gmail.com" class="contact-item">
+                <i class="fa-solid fa-envelope"></i>
+                fatma.softeng@gmail.com
+              </a>
+              <a
+                href="https://linkedin.com/in/fatmakarpinar"
+                target="_blank"
+                rel="noopener"
+                class="contact-item"
+              >
+                <i class="fa-brands fa-linkedin-in"></i>
+                linkedin.com/in/fatmakarpinar
+              </a>
+              <a
+                href="https://github.com/ftmkarpinar"
+                target="_blank"
+                rel="noopener"
+                class="contact-item"
+              >
+                <i class="fa-brands fa-github"></i>
+                github.com/ftmkarpinar
+              </a>
+              <a
+                href="https://www.instagram.com/thetechfatma/"
+                target="_blank"
+                rel="noopener"
+                class="contact-item"
+              >
+                <i class="fa-brands fa-instagram"></i>
+                @thetechfatma
+              </a>
+              <div class="contact-item">
+                <i class="fa-solid fa-location-dot"></i>
+                İstanbul, Türkiye
+              </div>
+            </div>
+          </div>
+
+          <form class="contact-form sr" id="contactForm">
+            <div class="form-group">
+              <label for="contactName" class="form-label">İsim</label>
+              <input
+                type="text"
+                id="contactName"
+                class="form-input"
+                placeholder="Adınız Soyadınız"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label for="contactEmail" class="form-label">Email</label>
+              <input
+                type="email"
+                id="contactEmail"
+                class="form-input"
+                placeholder="email@adresiniz.com"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label for="contactMessage" class="form-label">Mesaj</label>
+              <textarea
+                id="contactMessage"
+                class="form-textarea"
+                placeholder="Mesajınızı yazın..."
+                rows="4"
+                required
+              ></textarea>
+            </div>
+            <button type="submit" class="form-btn">
+              Gönder <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-inner">
+          <p class="footer-text">
+            © 2025 Fatma Karpınar - Tüm Hakları Saklıdır.
+          </p>
+          <div class="footer-links">
+            <a
+              href="https://linkedin.com/in/fatmakarpinar"
+              target="_blank"
+              rel="noopener"
+              class="footer-link"
+              aria-label="LinkedIn"
+            >
+              <i class="fa-brands fa-linkedin-in"></i> LinkedIn
+            </a>
+            <a
+              href="https://github.com/ftmkarpinar"
+              target="_blank"
+              rel="noopener"
+              class="footer-link"
+              aria-label="GitHub"
+            >
+              <i class="fa-brands fa-github"></i> GitHub
+            </a>
+            <a
+              href="https://www.instagram.com/thetechfatma/"
+              target="_blank"
+              rel="noopener"
+              class="footer-link"
+              aria-label="Instagram"
+            >
+              <i class="fa-brands fa-instagram"></i> Instagram
+            </a>
+            <a
+              href="mailto:fatma.softeng@gmail.com"
+              class="footer-link"
+              aria-label="Email"
+            >
+              <i class="fa-solid fa-envelope"></i> Email
+            </a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script src="js/shader-bg.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>
